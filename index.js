@@ -4,7 +4,10 @@ const app = express();
 const bcrypt = require('bcryptjs');
 // const cloudinary = require('cloudinary').v2;
 const jwt = require('jsonwebtoken');
-const User = require('./Model/user');
+const User = require('./model/user');
+const Investment = require('./model/investment');
+const Wallet = require('./model/wallet');
+const Deposit = require('./model/deposit');
 const PORT = process.env.PORT || 3000;
 const cors = require('cors');
 
@@ -48,6 +51,126 @@ app.post('Login', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).send({ error: 'Login failed' });
+  }
+});
+
+app.post('investment', async (req, res) => {
+  try {
+    const { planName, principalAmount, interestRate, period } = req.body;
+    const token = req.headers.authorization.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.SECRET_KEY);
+    const userId = decoded.userId;
+
+    const userWallet = await Wallet.findOne({ user: userId });
+
+    if (userWallet.balance < principalAmount) {
+      return res.status(400).json({ msg: 'Insufficient balance' });
+    }
+
+    userWallet.balance -= principalAmount;
+    await userWallet.save();
+
+    const investment = new Investment({ userId, planName, principalAmount, interestRate, period });
+    await investment.save();
+
+    setTimeout(async () => {
+      const investmentRecord = await Investment.findById(investment._id);
+
+      userWallet.balance += investmentRecord.earnings;
+      await userWallet.save();
+
+      investmentRecord.status = 'Completed';
+      await investmentRecord.save();
+    }, period * 1000 * 60 * 60);
+
+      res.status(201).send({ message: 'Investment added successfully', investment });
+    } catch (error) {
+      console.error(error);
+      res.status(500).send({ error: 'Investment creation failed' });
+    }
+  }
+);
+
+app.get('/wallet', async (req, res) => {
+  try {
+    const token = req.headers.authorization.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.SECRET_KEY);
+    const userId = decoded.userId;
+
+    const wallet = await Wallet.findOne({ user: userId });
+
+    if (!wallet) {
+      return res.status(404).json({ message: 'Wallet not found' });
+    }
+    res.status(200).json({ balance: wallet.balance });
+  } catch (error) {
+    console.error('Error retrieving wallet balance:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.post('/deposit', async (req, res) => {
+  try {
+    // const token = req.headers.authorization.split(' ')[1];
+    // const decoded = jwt.verify(token, process.env.SECRET_KEY);
+    // const userId = decoded.userId;
+    const { userId, currency, amount } = req.body;
+
+    if (!userId || !currency || !amount) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const deposit = new CryptocurrencyDeposit({
+      user: userId,
+      currency,
+      amount,
+      status: 'pending'
+    });
+    await deposit.save();
+
+    return res.status(201).json({ message: 'Cryptocurrency deposit initiated successfully' });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/withdrawal', async (req, res) => {
+  // const token = req.headers.authorization.split(' ')[1];
+  // const decoded = jwt.verify(token, process.env.SECRET_KEY);
+  // const userId = decoded.userId;
+  const { currency, amount } = req.body;
+  const { userId } = req.user;
+
+  try {
+    const user = await User.findById(userId).populate('wallet');
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const { wallet } = user;
+    if (!wallet) {
+      return res.status(404).json({ error: 'Wallet not found for user' });
+    }
+
+    if (!wallet.balances[currency] || wallet.balances[currency] < amount) {
+      return res.status(400).json({ error: 'Insufficient balance' });
+    }
+
+    // Simulate withdrawal transaction
+    wallet.balances[currency] -= amount;
+    wallet.totalBalance -= amount;
+    await wallet.save();
+
+    return res.status(200).json({ message: 'Withdrawal successful', wallet });
+  } catch (error) {
+    console.error('Withdrawal error:', error);
+    return res.status(500).json({ error: 'Withdrawal failed' });
   }
 });
 
