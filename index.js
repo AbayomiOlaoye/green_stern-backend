@@ -21,11 +21,11 @@ app.use(cors(
 app.use(express.json());
 require('./database/db');
 
-app.post('Register', async (req, res) => {
+app.post('/Register', async (req, res) => {
   try {
-    const { name, email, username, country, password } = req.body;
+    const { name, email, username, country, password, referee } = req.body;
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = new User({ name, email, username, country, password: hashedPassword });
+    const user = new User({ name, email, username, country, password: hashedPassword, referee });
     await user.save();
     res.status(201).send({ message: 'User registered successfully' });
   } catch (error) {
@@ -34,7 +34,7 @@ app.post('Register', async (req, res) => {
   }
 });
 
-app.post('Login', async (req, res) => {
+app.post('/Login', async (req, res) => {
   try {
     const { email, password } = req.body;
     const user = await User.findOne({ email });
@@ -54,7 +54,7 @@ app.post('Login', async (req, res) => {
   }
 });
 
-app.post('investment', async (req, res) => {
+app.post('/investment', async (req, res) => {
   try {
     const { planName, principalAmount, interestRate, period } = req.body;
     const token = req.headers.authorization.split(' ')[1];
@@ -162,7 +162,6 @@ app.post('/withdrawal', async (req, res) => {
       return res.status(400).json({ error: 'Insufficient balance' });
     }
 
-    // Simulate withdrawal transaction
     wallet.balances[currency] -= amount;
     wallet.totalBalance -= amount;
     await wallet.save();
@@ -171,6 +170,58 @@ app.post('/withdrawal', async (req, res) => {
   } catch (error) {
     console.error('Withdrawal error:', error);
     return res.status(500).json({ error: 'Withdrawal failed' });
+  }
+});
+
+app.get('/transactions', async (req, res) => {
+  const { userId } = req.user;
+
+  try {
+    const user = await User.findById(userId).populate('transactions');
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const transactions = user.transactions;
+
+    return res.status(200).json({ transactions });
+  } catch (error) {
+    console.error('Error fetching transaction history:', error);
+    return res.status(500).json({ error: 'Failed to fetch transaction history' });
+  }
+});
+
+app.post('/referral', async (req, res) => {
+  const { referralCode } = req.body;
+  const { userId } = req.user;
+
+  try {
+    const referee = await User.findById(userId);
+    if (!referee) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const referrer = await User.findOne({ referralCode });
+    if (!referrer) {
+      return res.status(400).json({ error: 'Invalid referral code' });
+    }
+
+    if (!referee.firstDepositAmount) {
+      return res.status(400).json({ error: 'Referee has not made a deposit yet' });
+    }
+
+    const referralBonusAmount = referee.deposits[0] * 0.1;
+
+    referee.wallet.totalBalance += referralBonusAmount;
+    referrer.wallet.totalBalance += referralBonusAmount;
+
+    await referee.wallet.save();
+    await referrer.wallet.save();
+
+    return res.status(200).json({ message: 'Referral bonus credited successfully' });
+  } catch (error) {
+    console.error('Referral error:', error);
+    return res.status(500).json({ error: 'Referral failed' });
   }
 });
 

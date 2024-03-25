@@ -11,7 +11,9 @@ const userSchema = new mongoose.Schema({
   transactions: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Transaction' }],
   investments: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Investment' }],
   withdrawals: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Withdrawal' }],
-  deposits: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Deposit' }]
+  deposits: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Deposit' }],
+  referee: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  referrals: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
 });
 
 // userSchema.pre('save', async function (next) {
