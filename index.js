@@ -21,7 +21,17 @@ app.use(cors(
 app.use(express.json());
 require('./database/db');
 
-app.post('/Register', async (req, res) => {
+app.get('/users', async (req, res) => {
+  try {
+    const users = await User.find();
+    res.json(users);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send('Server Error');
+  }
+});
+
+app.post('/register', async (req, res) => {
   try {
     const { name, email, username, country, password, referee } = req.body;
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -34,7 +44,7 @@ app.post('/Register', async (req, res) => {
   }
 });
 
-app.post('/Login', async (req, res) => {
+app.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     const user = await User.findOne({ email });
