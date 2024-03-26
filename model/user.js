@@ -11,14 +11,15 @@ const userSchema = new mongoose.Schema({
   transactions: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Transaction' }],
   investments: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Investment' }],
   withdrawals: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Withdrawal' }],
+  resetToken: { type: String, required: false },
   deposits: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Deposit' }],
-  referee: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  referee: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: false },
   referrals: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
 });
 
-userSchema.pre('save', async function (next) {
-  this.password = await bcrypt.hash(this.password, 10);
-  next();
-});
+// userSchema.pre('save', async function (next) {
+//   this.password = await bcrypt.hash(this.password, 10);
+//   next();
+// });
 
 module.exports = mongoose.model('User', userSchema);

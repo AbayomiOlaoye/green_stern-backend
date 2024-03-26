@@ -2,6 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const app = express();
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
+const nodemailer = require('nodemailer');
 // const cloudinary = require('cloudinary').v2;
 const jwt = require('jsonwebtoken');
 const User = require('./model/user');
@@ -20,6 +22,37 @@ app.use(cors(
 
 app.use(express.json());
 require('./database/db');
+
+const generateResetToken = () => {
+  return crypto.randomBytes(20).toString('hex');
+};
+
+const sendResetEmail = async (recipientEmail, resetToken) => {
+  const transporter = nodemailer.createTransport({
+    service: 'Gmail',
+    auth: {
+      user: 'your_email@example.com',
+      pass: 'your_password',
+    },
+  });
+
+  // Construct the email message
+  const mailOptions = {
+    from: 'your_email@example.com',
+    to: recipientEmail,
+    subject: 'Password Reset Request',
+    text: `Use the following link to reset your password: http://example.com/reset-password?token=${resetToken}`,
+    html: `<p>Use the following link to reset your password:</p><p><a href="http://example.com/reset-password?token=${resetToken}">Reset Password</a></p>`,
+  };
+
+  // Send the email
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log('Password reset email sent successfully');
+  } catch (error) {
+    console.error('Failed to send password reset email:', error);
+  }
+};
 
 app.get('/users', async (req, res) => {
   try {
@@ -46,8 +79,10 @@ app.post('/register', async (req, res) => {
 
 app.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
-    const user = await User.findOne({ email });
+    const { emailOrUsername, password } = req.body;
+    const user = await User.findOne({
+      $or: [{ email: emailOrUsername }, { username: emailOrUsername }]
+    });
     if (!user) {
       return res.status(404).send({ error: 'User not found' });
     }
@@ -55,7 +90,7 @@ app.post('/login', async (req, res) => {
     if (!isPasswordValid) {
       return res.status(401).send({ error: 'Invalid password' });
     }
-    const token = jwt.sign({ email
+    const token = jwt.sign({ userId: user._id
     }, process.env.SECRET_KEY, { expiresIn: '1h' });
     res.send({ token });
   } catch (error) {
@@ -259,6 +294,41 @@ app.post('/referral', async (req, res) => {
 //     res.status(500).send('Server Error');
 //   }
 // });
+
+app.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).send({ error: 'User not found' });
+    }
+    const resetToken = generateResetToken(); // Implement a function to generate a unique token
+    user.resetToken = resetToken;
+    await user.save();
+    sendResetEmail(user.email, resetToken); // Implement a function to send the reset email
+    res.send({ message: 'Password reset email sent' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ error: 'Failed to reset password' });
+  }
+});
+
+app.post('/reset-password', async (req, res) => {
+  try {
+    const { email, token, newPassword } = req.body;
+    const user = await User.findOne({ email, resetToken: token });
+    if (!user) {
+      return res.status(404).send({ error: 'Invalid or expired token' });
+    }
+    user.password = await bcrypt.hash(newPassword, 10);
+    user.resetToken = null; // Invalidate the reset token
+    await user.save();
+    res.send({ message: 'Password reset successful' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ error: 'Failed to reset password' });
+  }
+})
 
 // cloudinary.config({
 //   cloud_name: process.env.CLOUD_NAME,
