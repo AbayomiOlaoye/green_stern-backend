@@ -8,7 +8,9 @@ const DepositSchema = new mongoose.Schema({
   },
   currency: { type: String, required: true },
   amount: { type: Number, required: true },
+  qty: { type: Number, required: true },
   status: { type: String, default: 'pending' },
+  timestamp: { type: Date, default: Date.now },
 });
 
 module.exports = mongoose.model('Deposit', DepositSchema);

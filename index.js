@@ -12,6 +12,7 @@ const Wallet = require('./model/wallet');
 const Deposit = require('./model/deposit');
 const PORT = process.env.PORT || 3000;
 const cors = require('cors');
+const verifyJWT = require('./middleware/verify');
 
 app.use(cors(
   {
@@ -27,28 +28,34 @@ const generateResetToken = () => {
   return crypto.randomBytes(20).toString('hex');
 };
 
-const sendResetEmail = async (recipientEmail, resetToken) => {
+const sendEmail = async (recipientEmail) => {
   const transporter = nodemailer.createTransport({
-    service: 'Gmail',
+    host: process.env.MAIL_HOST,
+    port: process.env.MAIL_PORT,
     auth: {
-      user: 'your_email@example.com',
-      pass: 'your_password',
-    },
+      user: process.env.MAIL_USER,
+      pass: process.env.MAIL_PASS,
+    }
   });
 
   // Construct the email message
-  const mailOptions = {
-    from: 'your_email@example.com',
+  const mail = {
+    from: 'mindbytetechies@gmail.com',
     to: recipientEmail,
-    subject: 'Password Reset Request',
-    text: `Use the following link to reset your password: http://example.com/reset-password?token=${resetToken}`,
-    html: `<p>Use the following link to reset your password:</p><p><a href="http://example.com/reset-password?token=${resetToken}">Reset Password</a></p>`,
+    subject: 'Welcome to the Team!',
+    text: `We are glad to have you on board!`,
+    html: `<p>Use the following link to login:</p><p><a href="http://localhost:3000/login">Start Investing</a></p>`,
   };
 
   // Send the email
   try {
-    await transporter.sendMail(mailOptions);
-    console.log('Password reset email sent successfully');
+    await transporter.sendMail(mail, (error, info) => {
+      if (error) {
+        console.error('Error sending email:', error);
+      } else {
+        console.log('Email sent successfully:', info.response);
+      }
+    });
   } catch (error) {
     console.error('Failed to send password reset email:', error);
   }
@@ -64,12 +71,29 @@ app.get('/users', async (req, res) => {
   }
 });
 
+app.get('/users/:id', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    res.json(user);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send('Server Error');
+  }
+});
+
 app.post('/register', async (req, res) => {
   try {
     const { name, email, username, country, password, referee } = req.body;
     const hashedPassword = await bcrypt.hash(password, 10);
+
+    const existingUser = await User.findOne({ username });
+    if (existingUser) {
+      return res.status(400).json({ error: 'Username already exists. Please choose a different username.' });
+    }
+
     const user = new User({ name, email, username, country, password: hashedPassword, referee });
     await user.save();
+    sendEmail(user.email);
     res.status(201).send({ message: 'User registered successfully' });
   } catch (error) {
     console.error(error);
@@ -92,21 +116,23 @@ app.post('/login', async (req, res) => {
     }
     const token = jwt.sign({ userId: user._id
     }, process.env.SECRET_KEY, { expiresIn: '1h' });
-    res.send({ token });
+    res.send({ token, userInfo: user});
   } catch (error) {
-    console.error(error);
-    res.status(500).send({ error: 'Login failed' });
+    if (res.status(500).json) {
+      return res.status(500).json({ error: 'Login failed' });
+    }
+    res.status(404).json({ error: 'Resource Not Found' });
   }
 });
 
-app.post('/investment', async (req, res) => {
+app.post('/investment', verifyJWT, async (req, res) => {
   try {
     const { planName, principalAmount, interestRate, period } = req.body;
-    const token = req.headers.authorization.split(' ')[1];
-    const decoded = jwt.verify(token, process.env.SECRET_KEY);
-    const userId = decoded.userId;
+    if (!req.user) {
+      return res.status(400).json({ error: 'Missing user ID' });
+    }
 
-    const userWallet = await Wallet.findOne({ user: userId });
+    const userWallet = await Wallet.findOne({ user: req.user });
 
     if (userWallet.balance < principalAmount) {
       return res.status(400).json({ msg: 'Insufficient balance' });
@@ -136,13 +162,12 @@ app.post('/investment', async (req, res) => {
   }
 );
 
-app.get('/wallet', async (req, res) => {
+app.get('/wallet', verifyJWT, async (req, res) => {
   try {
-    const token = req.headers.authorization.split(' ')[1];
-    const decoded = jwt.verify(token, process.env.SECRET_KEY);
-    const userId = decoded.userId;
-
-    const wallet = await Wallet.findOne({ user: userId });
+    if (!req.user) {
+      return res.status(400).json({ message: 'Missing user ID' });
+    }
+    const wallet = await Wallet.findOne({ user: req.user });
 
     if (!wallet) {
       return res.status(404).json({ message: 'Wallet not found' });
@@ -154,28 +179,26 @@ app.get('/wallet', async (req, res) => {
   }
 });
 
-app.post('/deposit', async (req, res) => {
+app.post('/deposit', verifyJWT, async (req, res) => {
   try {
-    // const token = req.headers.authorization.split(' ')[1];
-    // const decoded = jwt.verify(token, process.env.SECRET_KEY);
-    // const userId = decoded.userId;
-    const { userId, currency, amount } = req.body;
+    const { currency, qty, amount } = req.body;
 
-    if (!userId || !currency || !amount) {
+    if (!req.user|| !currency || !amount) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    const user = await User.findById(userId);
+    const user = await User.findById(req.user).populate('user');
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const deposit = new CryptocurrencyDeposit({
-      user: userId,
+    const deposit = new Deposit({
       currency,
+      qty,
       amount,
-      status: 'pending'
+      user: req.user,
     });
+
     await deposit.save();
 
     return res.status(201).json({ message: 'Cryptocurrency deposit initiated successfully' });
@@ -185,14 +208,38 @@ app.post('/deposit', async (req, res) => {
   }
 });
 
-app.post('/withdrawal', async (req, res) => {
-  // const token = req.headers.authorization.split(' ')[1];
-  // const decoded = jwt.verify(token, process.env.SECRET_KEY);
-  // const userId = decoded.userId;
-  const { currency, amount } = req.body;
-  const { userId } = req.user;
-
+app.get('/profile/deposits', verifyJWT, async (req, res) => {
   try {
+    if (!req.user) {
+      return res.status(400).json({ error: 'Missing user ID' });
+    }
+
+    const result = await Deposit.findById(req.user);
+    console.log(result);
+    if (!result) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    console.log('Populated user:', result);
+    // const deposits = user.deposits;
+
+    res.status(200).json({ data: result });
+  } catch (error) {
+    console.error('Error fetching deposits:', error);
+    if (error.name === 'CastError') {
+      return res.status(400).json({ error: 'Invalid user ID format' });
+    }
+    return res.status(500).json({ error: 'Failed to fetch deposits' });
+  }
+});
+
+app.post('/withdrawal', verifyJWT, async (req, res) => {
+  try {
+    const token = req.headers.authorization.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.SECRET_KEY);
+    const userId = decoded.userId;
+  
+    const { currency, amount } = req.body;
     const user = await User.findById(userId).populate('wallet');
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
@@ -270,31 +317,6 @@ app.post('/referral', async (req, res) => {
   }
 });
 
-// app.post('/reviews', async (req, res) => {
-//   try {
-//     const { name, title, rating, comment } = req.body;
-//     const token = req.headers.authorization.split(' ')[1];
-//     const decoded = jwt.verify(token, process.env.SECRET_KEY);
-//     const userId = decoded.userId;
-//     const review = new Review({ name, userId, title, rating, comment });
-//     await review.save();
-//     res.status(201).send({ message: 'Review added successfully', review });
-//   } catch (error) {
-//     console.error(error);
-//     res.status(500).send({ error: 'Review creation failed' });
-//   }
-// });
-
-// app.get('/reviews', async (req, res) => {
-//   try {
-//     const reviews = await Review.find();
-//     res.json(reviews);
-//   } catch (error) {
-//     console.error(error);
-//     res.status(500).send('Server Error');
-//   }
-// });
-
 app.post('/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
@@ -305,7 +327,7 @@ app.post('/forgot-password', async (req, res) => {
     const resetToken = generateResetToken(); // Implement a function to generate a unique token
     user.resetToken = resetToken;
     await user.save();
-    sendResetEmail(user.email, resetToken); // Implement a function to send the reset email
+    sendEmail(user.email, resetToken); // Implement a function to send the reset email
     res.send({ message: 'Password reset email sent' });
   } catch (error) {
     console.error(error);
@@ -330,15 +352,15 @@ app.post('/reset-password', async (req, res) => {
   }
 })
 
-// cloudinary.config({
-//   cloud_name: process.env.CLOUD_NAME,
-//   api_key: process.env.CLOUD_API_KEY,
-//   api_secret: process.env.CLOUD_API_SECRET,
-// });
-
-// cloudinary.uploader.upload("./images/main_hero.jpg",
-//   { public_id: "hero_image" }, 
-//   function(error, result) {console.log(result); });
+app.get('/logout', async (req, res) => {
+  try {
+    res.clearCookie('token');
+    res.send({ message: 'Logged out successfully' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ error: 'Logout failed' });
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
