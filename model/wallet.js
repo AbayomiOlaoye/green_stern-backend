@@ -1,11 +1,6 @@
 const mongoose = require('mongoose');
 
 const WalletSchema = new mongoose.Schema({
-  user: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true,
-  },
   balances: {
     BTC: { type: Number, default: 0 },
     ETH: { type: Number, default: 0 },
@@ -19,6 +14,7 @@ const WalletSchema = new mongoose.Schema({
     USDT: { type: String, default: '' },
   },
   totalBalance: { type: Number, default: 0 },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true},
 });
 
 const Wallet = mongoose.model('Wallet', WalletSchema);

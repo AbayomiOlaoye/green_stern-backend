@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const InvestmentSchema = new mongoose.Schema({
-  user: {
+  userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true,
@@ -31,11 +31,7 @@ const InvestmentSchema = new mongoose.Schema({
     enum: ['Active', 'Completed'],
     default: 'Active',
   },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
-});
+}, { timestamps: true});
 
 const Investment = mongoose.model('Investment', InvestmentSchema);
 

@@ -15,12 +15,6 @@ const userSchema = new mongoose.Schema({
   deposits: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Deposit' }],
   referee: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   referrals: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-  createdAt: { type: Date, immutable: true, default: Date.now },
-});
-
-// userSchema.pre('save', async function (next) {
-//   this.password = await bcrypt.hash(this.password, 10);
-//   next();
-// });
+}, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);
