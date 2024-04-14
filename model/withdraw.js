@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const WithdrawSchema = new mongoose.Schema({
   currency: { type: String, required: true },
-  addresses: { type: mongoose.Schema.Types.ObjectId, ref: 'Wallet', required: true},
+  address: { type: String, required: true},
   amount: { type: Number, required: true },
   status: { type: String, default: 'pending' },
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true},

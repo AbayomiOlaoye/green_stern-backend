@@ -107,6 +107,17 @@ app.post('/register', async (req, res) => {
     const user = new User({ name, email, username, country, password: hashedPassword, referee });
     await user.save();
     sendEmail(user.email);
+
+    if (referee) {
+      const referer = await User.findOne({ username: referee });
+      if (!referer) {
+        return res.status(400).json({ error: 'Invalid referral code' });
+      } else {
+        referer.referrals.push(user._id);
+        await referer.save();
+      }
+    }
+
     res.status(201).send({ message: 'User registered successfully' });
   } catch (error) {
     if (error.name === 'ValidationError') {
@@ -131,8 +142,8 @@ app.post('/login', async (req, res) => {
       return res.status(401).send({ error: 'Invalid password' });
     }
     const token = jwt.sign({ userId: user._id
-    }, process.env.SECRET_KEY, { expiresIn: '24h' });
-    res.send({ token, userInfo: user});
+    }, process.env.SECRET_KEY, { expiresIn: '72h' });
+    res.send({ token });
   } catch (error) {
     if (res.status(500).json) {
       return res.status(500).json({ error: 'Login failed' });
@@ -202,12 +213,12 @@ app.get('/wallet', verifyJWT, async (req, res) => {
 
     const user = await User.findById(req.user);
 
-    const wallet = await Wallet.findOne({userId: user._id})
+    const wallet = await Wallet.findOne({userId: user._id});
 
     if (!wallet) {
       return res.status(404).json({ message: 'Wallet not found' });
     }
-    res.status(200).json({ balance: wallet.balances, totalBalance: wallet.totalBalance});
+    return res.status(200).json({ balance: wallet.balances, address: wallet.addresses, totalBalance: wallet.totalBalance,});
   } catch (error) {
     console.error('Error retrieving wallet balance:', error);
     createError(error.status, error.message);
@@ -274,7 +285,6 @@ app.post('/deposit', verifyJWT, async (req, res) => {
   }
 });
 
-
 // Get all deposits by user
 app.get('/deposits/all', verifyJWT, async (req, res) => {
   try {
@@ -283,11 +293,9 @@ app.get('/deposits/all', verifyJWT, async (req, res) => {
     }
 
     const result = await Deposit.find({}).populate('userId').exec();
-    console.log(result);
     if (!result) {
       return res.status(404).json({ error: 'User not found' });
     }
-
     res.status(200).json({ data: result });
   } catch (error) {
     console.error('Error fetching deposits:', error);
@@ -305,7 +313,7 @@ app.post('/withdraw', verifyJWT, async (req, res) => {
       return res.status(400).json({ error: 'Missing user ID' });
     }
 
-    const { currency, amount } = req.body;
+    const { currency, amount, address } = req.body;
 
     const wallet = await Wallet.findOne({ userId: req.user });
 
@@ -314,7 +322,7 @@ app.post('/withdraw', verifyJWT, async (req, res) => {
       return res.status(400).json({ error: 'Insufficient balance' });
     }
 
-    await Withdrawal.create({ currency, amount, userId: req.user });
+    await Withdrawal.create({ currency, address, amount, userId: req.user });
 
     wallet.balances[currency] -= amount;
     wallet.totalBalance -= amount;
@@ -324,60 +332,191 @@ app.post('/withdraw', verifyJWT, async (req, res) => {
 
     return res.status(200).json({ message: 'Withdrawal successful', wallet });
   } catch (error) {
-    console.error('Withdrawal error:', error);
-    return res.status(500).json({ error: 'Withdrawal failed' });
+    // console.error('Withdrawal error:', error);
+    return res.status(500).json({ error: error.message });
   }
 });
 
-app.get('/transactions', async (req, res) => {
-  const { userId } = req.user;
+app.put('/update-address', verifyJWT, async (req, res) => {
+  const { cryptoType, newAddress } = req.body;
+
+  if (!cryptoType || !newAddress) {
+    return res.status(400).json({ message: 'Crypto type and address are required' });
+  }
 
   try {
-    const user = await User.findById(userId).populate('transactions');
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+    const wallet = await Wallet.findOne({ userId: req.user });
+
+    if (!wallet) {
+      return res.status(404).json({ message: 'Wallet not found' });
     }
 
-    const transactions = user.transactions;
+    if (wallet.addresses.hasOwnProperty(cryptoType)) {
+      wallet.addresses[cryptoType] = newAddress;
+    } else {
+      return res.status(400).json({ message: 'Invalid cryptocurrency type' });
+    }
 
-    return res.status(200).json({ transactions });
+    await wallet.save();
+
+    res.json({ message: 'Address updated successfully', wallet });
   } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.get('/transactions/deposits', verifyJWT, async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(400).json({ error: 'Missing user ID' });
+    }
+    const deposits = await Transaction.find({userId: req.user, type: /deposit/i}).exec();
+
+    return res.status(200).json({ deposits });
+  } catch (error) {
+    if (error.name === 'CastError' || error.name === 'ValidationError' || error.name === 'TypeError' || error.name === 'MongoServerSelectionError') {
+      console.error('Error fetching transaction history:', error);
+      return res.status(400).json({ error: 'Invalid user ID format' });
+    }
     console.error('Error fetching transaction history:', error);
     return res.status(500).json({ error: 'Failed to fetch transaction history' });
   }
 });
 
-app.post('/referral', async (req, res) => {
-  const { referralCode } = req.body;
-  const { userId } = req.user;
 
+app.get('/transactions/withdrawals', verifyJWT, async (req, res) => {
   try {
-    const referee = await User.findById(userId);
-    if (!referee) {
-      return res.status(404).json({ error: 'User not found' });
+    if (!req.user) {
+      return res.status(400).json({ error: 'Missing user ID' });
+    }
+    const withdrawals = await Transaction.find({userId: req.user, type: /withdraw/i}).exec();
+
+    return res.status(200).json({ withdrawals });
+  } catch (error) {
+    if (error.name === 'CastError' || error.name === 'ValidationError' || error.name === 'TypeError') {
+      console.error('Error fetching transaction history:', error);
+      return res.status(400).json({ error: 'Invalid user ID format' });
+    }
+    console.error('Error fetching transaction history:', error);
+    return res.status(500).json({ error: 'Failed to fetch transaction history' });
+  }
+});
+
+
+app.get('/transactions/investments', verifyJWT, async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(400).json({ error: 'Missing user ID' });
     }
 
-    const referrer = await User.findOne({ referralCode });
-    if (!referrer) {
-      return res.status(400).json({ error: 'Invalid referral code' });
+    const investments = await Transaction.find({userId: req.user, type: /investment/i}).exec();
+
+    return res.status(200).json({ investments });
+  } catch (error) {
+    if (error.name === 'CastError' || error.name === 'ValidationError' || error.name === 'TypeError') {
+      console.error('Error fetching transaction history:', error);
+      return res.status(400).json({ error: 'Invalid user ID format' });
+    }
+    console.error('Error fetching transaction history:', error);
+    return res.status(500).json({ error: 'Failed to fetch transaction history' });
+  }
+});
+
+// app.post('/referral', verifyJWT, async (req, res) => {
+//   try {
+//     const referee = await User.findById(req.user);
+//     if (!referee) {
+//       return res.status(404).json({ error: 'No referrals yet' });
+//     }
+
+//     const referrer = await User.findOne({ username: referee.referees });
+//     if (!referrer) {
+//       return res.status(400).json({ error: 'Invalid referral code' });
+//     }
+
+//     if (!referee.firstDepositAmount) {
+//       return res.status(400).json({ error: 'Referee has not made a deposit yet' });
+//     }
+
+//     const referralBonusAmount = referee.deposits[0] * 0.1;
+
+//     referee.wallet.totalBalance += referralBonusAmount;
+//     referrer.wallet.totalBalance += referralBonusAmount;
+
+//     await referee.wallet.save();
+//     await referrer.wallet.save();
+
+//     return res.status(200).json({ message: 'Referral bonus credited successfully' });
+//   } catch (error) {
+//     console.error('Referral error:', error);
+//     return res.status(500).json({ error: 'Referral failed' });
+//   }
+// });
+
+app.get('/referrals', verifyJWT, async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(404).json({ error: 'Referral code not found' });
     }
 
-    if (!referee.firstDepositAmount) {
-      return res.status(400).json({ error: 'Referee has not made a deposit yet' });
-    }
+    const user = await User.findById(req.user).populate('referrals');
 
-    const referralBonusAmount = referee.deposits[0] * 0.1;
-
-    referee.wallet.totalBalance += referralBonusAmount;
-    referrer.wallet.totalBalance += referralBonusAmount;
-
-    await referee.wallet.save();
-    await referrer.wallet.save();
-
-    return res.status(200).json({ message: 'Referral bonus credited successfully' });
+    return res.status(200).json({ referrals: user.referrals, username: user.username });
   } catch (error) {
     console.error('Referral error:', error);
     return res.status(500).json({ error: 'Referral failed' });
+  }
+});
+
+app.get('/trades/completed', verifyJWT, async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(404).json({ error: 'No trades found' });
+    }
+
+    const trades = await Transaction.find({ userId: req.user })
+    .where('status').in(['Completed'])
+    .exec();
+
+    return res.status(200).json({ trades });
+  } catch (error) {
+    console.error('Trade error:', error);
+    return res.status(500).json({ error: 'Trade failed' });
+  }
+});
+
+app.get('/trades/pending', verifyJWT, async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(404).json({ error: 'No trades found' });
+    }
+
+    const trades = await Transaction.find({ userId: req.user })
+    .where('status').in(['Pending'])
+    .exec();
+
+    return res.status(200).json({ trades });
+  } catch (error) {
+    console.error('Trade error:', error);
+    return res.status(500).json({ error: 'Trade failed' });
+  }
+});
+
+app.get('/trades/failed', verifyJWT, async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(404).json({ error: 'No trades found' });
+    }
+
+    const trades = await Transaction.find({ userId: req.user })
+    .where('status').in(['Failed'])
+    .exec();
+
+    return res.status(200).json({ trades });
+  } catch (error) {
+    console.error('Trade error:', error);
+    return res.status(500).json({ error: 'Trade failed' });
   }
 });
 
