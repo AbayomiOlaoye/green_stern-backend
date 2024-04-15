@@ -173,6 +173,7 @@ app.post('/invest', verifyJWT, async (req, res) => {
     await userWallet.save();
 
     const investment = new Investment({ planName, principalAmount, interestRate, period, userId: req.user});
+    console.log(investment);
     await investment.save();
 
     await Transaction.create({ userId: req.user, type: `Investment - ${planName}`, amount: principalAmount, status: 'Pending' });
@@ -201,7 +202,7 @@ app.post('/invest', verifyJWT, async (req, res) => {
       } else {
         return res.status(500).send({ error: error.message });
     };
-    }
+  }
   }
 );
 
