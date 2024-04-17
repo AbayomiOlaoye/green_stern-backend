@@ -1,12 +1,6 @@
 const mongoose = require('mongoose');
 
 const WalletSchema = new mongoose.Schema({
-  balances: {
-    BTC: { type: Number, default: 0 },
-    ETH: { type: Number, default: 0 },
-    BNB: { type: Number, default: 0 },
-    USDT: { type: Number, default: 0 },
-  },
   addresses: {
     BTC: { type: String, default: 'Not Added Yet' },
     ETH: { type: String, default: 'Not Added Yet' },

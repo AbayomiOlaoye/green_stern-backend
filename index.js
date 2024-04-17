@@ -154,7 +154,7 @@ app.post('/login', async (req, res) => {
 
 app.post('/invest', verifyJWT, async (req, res) => {
   try {
-    const { planName, principalAmount, interestRate, period } = req.body;
+    const { planName, principalAmount, interestRate, period, min, max } = req.body;
     if (!req.user) {
       return res.status(400).json({ error: 'Missing user ID' });
     }
@@ -163,11 +163,15 @@ app.post('/invest', verifyJWT, async (req, res) => {
 
     const userWallet = await Wallet.findOne({ userId: user._id });
 
-    let balance = userWallet.balance;
+    let balance = userWallet.totalBalance;
 
     if (balance < principalAmount) {
-      return res.status(400).json({ msg: 'Insufficient balance' });
+      return res.status(400).json({ message: 'Insufficient balance' });
+    } else if (principalAmount < min || principalAmount > max) {
+      return res.status(400).json({ message: 'Check minimm and maximum value for this plan' });
     }
+
+    const earnings = principalAmount * (interestRate / 100);
 
     balance -= principalAmount;
     await userWallet.save();
@@ -188,7 +192,7 @@ app.post('/invest', verifyJWT, async (req, res) => {
 
       investmentRecord.status = 'Completed';
       await investmentRecord.save();
-    }, period * 1000 * 60 * 60);
+    }, period * 1000 * 60 * 60 * 24);
 
       res.status(201).send({ message: 'Investment added successfully', investment });
     } catch (error) {
@@ -219,7 +223,7 @@ app.get('/wallet', verifyJWT, async (req, res) => {
     if (!wallet) {
       return res.status(404).json({ message: 'Wallet not found' });
     }
-    return res.status(200).json({ balance: wallet.balances, address: wallet.addresses, totalBalance: wallet.totalBalance,});
+    return res.status(200).json({ address: wallet.addresses, totalBalance: wallet.totalBalance,});
   } catch (error) {
     console.error('Error retrieving wallet balance:', error);
     createError(error.status, error.message);
