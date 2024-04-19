@@ -10,9 +10,10 @@ const ReferralSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  referrals: [{
+  referral: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
+    required: false,
   }],
 }, { timestamps: true });
 

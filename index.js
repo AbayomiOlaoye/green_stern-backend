@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const app = express();
+// const { MailtrapClient } = require('mailtrap');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
@@ -35,7 +36,7 @@ const generateResetToken = () => {
 
 // Construct the email message
 const regMail = (recipientEmail) => {
-  `from: mindbytetechies@gmail.com,
+  `from: greensterns@gmail.com,
   to: ${recipientEmail},
   subject: 'Welcome to the Team!',
   text: We are glad to have you on board!,
@@ -50,29 +51,38 @@ const withdrawSuccess = (recipientEmail) => {
   html: <p>Use the following link to login:</p><p><a href="http://localhost:3000/login">Start Investing</a></p>`;
 };
 
+// Name	Samanta Durgan
+// Username	samanta39@ethereal.email
+// Password	EURfMp5hu7BAyHMMy6
+
 const sendEmail = async (recipientEmail) => {
   const transporter = nodemailer.createTransport({
-    host: process.env.MAIL_HOST,
-    port: process.env.MAIL_PORT,
+    host: 'smtp.ethereal.email',
+    port: 587,
+    secure: false,
     auth: {
-      user: process.env.MAIL_USER,
-      pass: process.env.MAIL_PASS,
+      user: 'samanta39@ethereal.email',
+      pass: 'EURfMp5hu7BAyHMMy6',
     }
   });
 
   // Send the email
+
+  regMail(recipientEmail);
   try {
-    await transporter.sendMail(regMail(recipientEmail), (error, info) => {
-      if (error) {
-        console.error('Error sending email:', error);
-      } else {
-        console.log('Email sent successfully:', info.response);
+    const info = await transporter.sendMail(
+      {
+        from: 'greensterns@gmail.com',
+        to: recipientEmail,
+        subject: "Hello ✔",
+        text: "Hello world?",
+        html: "<b>Investpors Welcome?</b>",
       }
-    });
-  } catch (error) {
-    console.error('Failed to send password reset email:', error);
-  }
-};
+    );
+    console.log('Message sent: %s', info.messageId);
+} catch (error) {
+  console.error('Error sending email:', error);
+}}
 
 app.get('/users', async (req, res) => {
   try {
@@ -86,7 +96,7 @@ app.get('/users', async (req, res) => {
 
 app.get('/users/:id', async (req, res) => {
   try {
-    const user = await User.findById(req.params.id);
+    const user = await User.findOne(req.params.id);
     res.json(user);
   } catch (error) {
     console.error(error);
@@ -100,31 +110,26 @@ app.post('/register', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const existingUser = await User.findOne({ username });
+    const existingEmail = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ error: 'Username already exists. Please choose a different username.' });
+    } else if (existingEmail) {
+      return res.status(400).json({ error: 'Email already exists. Please choose a different email.' });
     }
 
     const user = new User({ name, email, username, country, password: hashedPassword, referee });
-    await user.save();
     sendEmail(user.email);
 
-    if (referee) {
-      const referer = await User.findOne({ username: referee });
-      if (!referer) {
-        return res.status(400).json({ error: 'Invalid referral code' });
-      } else {
-        referer.referrals.push(user._id);
-        await referer.save();
-      }
-    }
+    await user.save();
 
-    res.status(201).send({ message: 'User registered successfully' });
+    return res.status(201).send({ message: 'User registered successfully' });
   } catch (error) {
     if (error.name === 'ValidationError') {
-      return res.status(400).send({ message: 'Check your username. Minimum length is 6' });
+      console.error(error);
+      return res.status(400).send({ message: 'Check your username. Minimum length is 10', error: error });
     } else {
       console.error(error);
-    res.status(500).send({ error: 'Registration failed' });}
+    return res.status(500).send({ error: 'Registration failed', msg: error });}
   }
 });
 
@@ -154,7 +159,7 @@ app.post('/login', async (req, res) => {
 
 app.post('/invest', verifyJWT, async (req, res) => {
   try {
-    const { planName, principalAmount, interestRate, period, min, max } = req.body;
+    const { planName, principalAmount, interestRate, period, min, max, currency } = req.body;
     if (!req.user) {
       return res.status(400).json({ error: 'Missing user ID' });
     }
@@ -163,21 +168,24 @@ app.post('/invest', verifyJWT, async (req, res) => {
 
     const userWallet = await Wallet.findOne({ userId: user._id });
 
-    let balance = userWallet.totalBalance;
+    let balance = userWallet.balances[currency];
 
-    if (balance < principalAmount) {
-      return res.status(400).json({ message: 'Insufficient balance' });
-    } else if (principalAmount < min || principalAmount > max) {
-      return res.status(400).json({ message: 'Check minimm and maximum value for this plan' });
+    if (balance < principalAmount || principalAmount < min || principalAmount > max) {
+      return res.status(400).json({ message: 'Insufficient balance or invalid amount' });
+    };
+
+    if (!userWallet.balances.hasOwnProperty(currency)) {
+      return res.status(400).json({ msg: 'Invalid currency' });
     }
 
     const earnings = principalAmount * (interestRate / 100);
 
-    balance -= principalAmount;
+    userWallet.balances[currency] -= principalAmount;
+    userWallet.totalBalance -= principalAmount;
+
     await userWallet.save();
 
     const investment = new Investment({ planName, principalAmount, interestRate, period, userId: req.user});
-    console.log(investment);
     await investment.save();
 
     await Transaction.create({ userId: req.user, type: `Investment - ${planName}`, amount: principalAmount, status: 'Pending' });
@@ -185,9 +193,12 @@ app.post('/invest', verifyJWT, async (req, res) => {
     setTimeout(async () => {
       const investmentRecord = await Investment.findById({userId: user._id});
 
-      investmentRecord.earnings += earnings + principalAmount;
+      investmentRecord.earnings += earnings;
 
-      balance += investmentRecord.earnings;
+      investmentRecord.earnings += earnings;
+      userWallet.balances[currency] += earnings;
+      userWallet.totalBalance += earnings;
+
       await userWallet.save();
 
       investmentRecord.status = 'Completed';
@@ -223,7 +234,7 @@ app.get('/wallet', verifyJWT, async (req, res) => {
     if (!wallet) {
       return res.status(404).json({ message: 'Wallet not found' });
     }
-    return res.status(200).json({ address: wallet.addresses, totalBalance: wallet.totalBalance,});
+    return res.status(200).json({ balance: wallet.balances, address: wallet.addresses, totalBalance: wallet.totalBalance,});
   } catch (error) {
     console.error('Error retrieving wallet balance:', error);
     createError(error.status, error.message);

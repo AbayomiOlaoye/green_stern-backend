@@ -13,8 +13,8 @@ const userSchema = new mongoose.Schema({
   withdrawals: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Withdrawal' }],
   resetToken: { type: String, required: false },
   deposits: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Deposit' }],
-  referee: { type: mongoose.Schema.Types.ObjectId, ref: 'Referee' },
-  referrals: [{ type: String, required: true, unique: true }],
+  referee: { type: String, required: false },
+  referrals: [{type: String, required: false}],
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);
