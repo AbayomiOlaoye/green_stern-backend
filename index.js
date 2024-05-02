@@ -21,13 +21,12 @@ const createError = require('./utils/error');
 app.use(cors(
   {
     origin: '*',
+    credentials: true,
   }
 ));
 
 app.use(express.json());
 require('./database/db');
-
-
 
 const generateResetToken = () => {
   return crypto.randomBytes(20).toString('hex');
