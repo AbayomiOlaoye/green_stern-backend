@@ -20,7 +20,7 @@ const createError = require('./utils/error');
 
 app.use(cors(
   {
-    origin: 'https://green-stern-backend.onrender.com',
+    origin: 'https://greenstockscapital.com',
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     credentials: true,
   }
