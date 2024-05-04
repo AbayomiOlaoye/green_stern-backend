@@ -33,8 +33,11 @@ const generateResetToken = () => {
   return crypto.randomBytes(20).toString('hex');
 };
 
-app.get('/users', async (req, res) => {
+app.get('/users', verifyJWT, async (req, res) => {
   try {
+    if (req.user.isAdmin !== 'admin') {
+      return res.status(403).send({ error: 'Unauthorized' });
+    }
     const users = await User.find();
     res.json(users);
   } catch (error) {
@@ -95,12 +98,12 @@ app.post('/login', async (req, res) => {
       return res.status(400).send({ error: 'Invalid credentials' });
     }
     const token = jwt.sign({ userId: user._id
-    }, process.env.SECRET_KEY, { expiresIn: '3m' });
+    }, process.env.SECRET_KEY, { expiresIn: '90d' });
     const userData = {
       name: user.name,
       email: user.email,
       username: user.username,
-      country: user.country,      id: user._id
+      country: user.country,
     };
     res.send({ token, userData });
   } catch (error) {

@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const verifyJWT = (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    console.log(res, req);
     return res.status(401).json({ error: 'Unauthorized access' });
   }
 
@@ -13,7 +14,8 @@ const verifyJWT = (req, res, next) => {
     req.user = decoded.userId;
     next();
   } catch (error) {
-    res.status(403).json({ error: 'Invalid token' });
+    console.log(error, token);
+    res.status(401).json({ error: 'Invalid token' });
   }
 };
 
