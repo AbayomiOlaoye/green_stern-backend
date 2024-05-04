@@ -17,11 +17,10 @@ const PORT = process.env.PORT || 7000;
 const cors = require('cors');
 const verifyJWT = require('./middleware/verify');
 const createError = require('./utils/error');
-const user = require('./model/user');
 
 app.use(cors(
   {
-    origin: '*',
+    origin: 'https://green-stern-backend.onrender.com',
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     credentials: true,
   }
