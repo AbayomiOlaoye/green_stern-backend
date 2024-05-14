@@ -133,7 +133,7 @@ app.post('/invest', verifyJWT, async (req, res) => {
     };
 
     if (!userWallet.balances.hasOwnProperty(currency)) {
-      return res.status(400).json({ msg: 'Invalid currency' });
+      return res.status(400).json({ message: 'Invalid currency' });
     }
 
     const earnings = principalAmount * (interestRate / 100);
@@ -167,13 +167,13 @@ app.post('/invest', verifyJWT, async (req, res) => {
     } catch (error) {
       console.error(error);
       if (error.name === 'ValidationError') {
-        return res.status(400).send({ error: 'Invalid investment details' });
+        return res.status(400).send({ message: 'Invalid investment details' });
       } else if (error.name === 'CastError') {
-        return res.status(400).send({ error: 'Invalid user ID format' });
+        return res.status(400).send({ message: 'Invalid user ID format' });
       } else if (error.name === 'TypeError') {
-        return res.status(500).send({ error: 'Investment creation failed' });
+        return res.status(500).send({ message: 'Investment creation failed' });
       } else {
-        return res.status(500).send({ error: error.message });
+        return res.status(500).send({ message: error.message });
     };
   }
   }
@@ -197,11 +197,11 @@ app.get('/wallet', verifyJWT, async (req, res) => {
     console.error('Error retrieving wallet balance:', error);
     createError(error.status, error.message);
     if (error.name === 'ReferenceError') {
-      return res.status(400).json({ error: 'Invalid user ID format' });
+      return res.status(400).json({ message: 'Invalid user ID format' });
     } else if (error.name === 'TypeError') {
-      return res.status(500).json({ error: 'Failed to fetch wallet balance' });
+      return res.status(500).json({ message: 'Failed to fetch wallet balance' });
     } else {
-      return res.status(500).json({ error: error.message });
+      return res.status(500).json({ message: error.message });
     }
   }
 });
@@ -211,12 +211,12 @@ app.post('/deposit', verifyJWT, async (req, res) => {
     const { currency, qty, amount } = req.body;
 
     if (!req.user || !currency || !amount) {
-      return res.status(400).json({ error: 'Missing required fields' });
+      return res.status(400).json({ message: 'Missing required fields' });
     }
 
     const user = await User.findById(req.user);
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({ message: 'User not found' });
     }
 
     const deposit = new Deposit({
@@ -247,14 +247,14 @@ app.post('/deposit', verifyJWT, async (req, res) => {
     return res.status(201).json({ message: 'Cryptocurrency deposit initiated successfully' });
   } catch (error) {
     if (error.name === 'ValidationError') {
-      return res.status(400).json({ error: 'Invalid deposit details' });
+      return res.status(400).json({ message: 'Invalid deposit details' });
     } else if (error.name === 'CastError') {
-      return res.status(400).json({ error: 'Invalid user ID format' });
+      return res.status(400).json({ message: 'Invalid user ID format' });
     } else if (error.name === 'TypeError') {
       await Transaction.create({ userId: req.user, type: 'Deposit', amount, status: 'Failed' });
-      return res.status(400).json({ error: error.message });
+      return res.status(400).json({ message: error.message });
     } else {
-      return res.status(500).json({ error: error.message });
+      return res.status(500).json({ message: error.message });
     }
   }
 });
@@ -263,20 +263,20 @@ app.post('/deposit', verifyJWT, async (req, res) => {
 app.get('/deposits/all', verifyJWT, async (req, res) => {
   try {
     if (!req.user) {
-      return res.status(400).json({ error: 'Missing user ID' });
+      return res.status(400).json({ message: 'Missing user ID' });
     }
 
     const result = await Deposit.find({}).populate('userId').exec();
     if (!result) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({ message: 'User not found' });
     }
     res.status(200).json({ data: result });
   } catch (error) {
     console.error('Error fetching deposits:', error);
     if (error.name === 'CastError' || error.name === 'ValidationError' || error.name === 'TypeError') {
-      return res.status(400).json({ error: 'Invalid user ID format' });
+      return res.status(400).json({ message: 'Invalid user ID format' });
     } else {
-      return res.status(500).json({ error: 'Failed to fetch deposits' });
+      return res.status(500).json({ message: 'Failed to fetch deposits' });
     }
   }
 });
@@ -284,7 +284,7 @@ app.get('/deposits/all', verifyJWT, async (req, res) => {
 app.post('/withdraw', verifyJWT, async (req, res) => {
   try {
     if (!req.user) {
-      return res.status(400).json({ error: 'Missing user ID' });
+      return res.status(400).json({ message: 'Missing user ID' });
     }
 
     const { currency, amount, address } = req.body;
@@ -293,7 +293,7 @@ app.post('/withdraw', verifyJWT, async (req, res) => {
 
     if (!wallet.balances[currency] || wallet.balances[currency] < amount) {
       await Transaction.create({ userId: req.user, type: 'Withdrawal', amount, status: 'Failed' });
-      return res.status(400).json({ error: 'Insufficient balance' });
+      return res.status(400).json({ message: 'Insufficient balance' });
     }
 
     await Withdrawal.create({ currency, address, amount, userId: req.user });
@@ -307,7 +307,7 @@ app.post('/withdraw', verifyJWT, async (req, res) => {
     return res.status(200).json({ message: 'Withdrawal successful', wallet });
   } catch (error) {
     // console.error('Withdrawal error:', error);
-    return res.status(500).json({ error: error.message });
+    return res.status(500).json({ message: error.message });
   }
 });
 
@@ -350,11 +350,9 @@ app.get('/transactions/deposits', verifyJWT, async (req, res) => {
     return res.status(200).json({ deposits });
   } catch (error) {
     if (error.name === 'CastError' || error.name === 'ValidationError' || error.name === 'TypeError' || error.name === 'MongoServerSelectionError') {
-      console.error('Error fetching transaction history:', error);
-      return res.status(400).json({ error: 'Invalid user ID format' });
+      return res.status(400).json({ message: 'Invalid user ID format' });
     }
-    console.error('Error fetching transaction history:', error);
-    return res.status(500).json({ error: 'Failed to fetch transaction history' });
+    return res.status(500).json({ message: 'Failed to fetch transaction history' });
   }
 });
 
@@ -362,18 +360,17 @@ app.get('/transactions/deposits', verifyJWT, async (req, res) => {
 app.get('/transactions/withdrawals', verifyJWT, async (req, res) => {
   try {
     if (!req.user) {
-      return res.status(400).json({ error: 'Missing user ID' });
+      return res.status(400).json({ message: 'Missing user ID' });
     }
     const withdrawals = await Transaction.find({userId: req.user, type: /withdraw/i}).exec();
 
     return res.status(200).json({ withdrawals });
   } catch (error) {
     if (error.name === 'CastError' || error.name === 'ValidationError' || error.name === 'TypeError') {
-      console.error('Error fetching transaction history:', error);
-      return res.status(400).json({ error: 'Invalid user ID format' });
+      return res.status(400).json({ message: 'Invalid user ID format' });
     }
     console.error('Error fetching transaction history:', error);
-    return res.status(500).json({ error: 'Failed to fetch transaction history' });
+    return res.status(500).json({ message: 'Failed to fetch transaction history' });
   }
 });
 
@@ -381,7 +378,7 @@ app.get('/transactions/withdrawals', verifyJWT, async (req, res) => {
 app.get('/transactions/investments', verifyJWT, async (req, res) => {
   try {
     if (!req.user) {
-      return res.status(400).json({ error: 'Missing user ID' });
+      return res.status(400).json({ message: 'Missing user ID' });
     }
 
     const investments = await Transaction.find({userId: req.user, type: /investment/i}).exec();
@@ -390,10 +387,10 @@ app.get('/transactions/investments', verifyJWT, async (req, res) => {
   } catch (error) {
     if (error.name === 'CastError' || error.name === 'ValidationError' || error.name === 'TypeError') {
       console.error('Error fetching transaction history:', error);
-      return res.status(400).json({ error: 'Invalid user ID format' });
+      return res.status(400).json({ message: 'Invalid user ID format' });
     }
     console.error('Error fetching transaction history:', error);
-    return res.status(500).json({ error: 'Failed to fetch transaction history' });
+    return res.status(500).json({ message: 'Failed to fetch transaction history' });
   }
 });
 
@@ -431,22 +428,21 @@ app.get('/transactions/investments', verifyJWT, async (req, res) => {
 app.get('/referrals', verifyJWT, async (req, res) => {
   try {
     if (!req.user) {
-      return res.status(404).json({ error: 'Referral code not found' });
+      return res.status(404).json({ message: 'Referral code not found' });
     }
 
     const user = await User.findById(req.user).populate('referrals');
 
     return res.status(200).json({ referrals: user.referrals, username: user.username });
   } catch (error) {
-    console.error('Referral error:', error);
-    return res.status(500).json({ error: 'Referral failed' });
+    return res.status(500).json({ message: 'Referral failed' });
   }
 });
 
 app.get('/trades/completed', verifyJWT, async (req, res) => {
   try {
     if (!req.user) {
-      return res.status(404).json({ error: 'No trades found' });
+      return res.status(404).json({ message: 'No trades found' });
     }
 
     const trades = await Transaction.find({ userId: req.user })
@@ -455,15 +451,14 @@ app.get('/trades/completed', verifyJWT, async (req, res) => {
 
     return res.status(200).json({ trades });
   } catch (error) {
-    console.error('Trade error:', error);
-    return res.status(500).json({ error: 'Trade failed' });
+    return res.status(500).json({ message: 'Trade failed' });
   }
 });
 
 app.get('/trades/pending', verifyJWT, async (req, res) => {
   try {
     if (!req.user) {
-      return res.status(404).json({ error: 'No trades found' });
+      return res.status(404).json({ message: 'No trades found' });
     }
 
     const trades = await Transaction.find({ userId: req.user })
@@ -472,15 +467,14 @@ app.get('/trades/pending', verifyJWT, async (req, res) => {
 
     return res.status(200).json({ trades });
   } catch (error) {
-    console.error('Trade error:', error);
-    return res.status(500).json({ error: 'Trade failed' });
+    return res.status(500).json({ message: 'Trade failed' });
   }
 });
 
 app.get('/trades/failed', verifyJWT, async (req, res) => {
   try {
     if (!req.user) {
-      return res.status(404).json({ error: 'No trades found' });
+      return res.status(404).json({ message: 'No trades found' });
     }
 
     const trades = await Transaction.find({ userId: req.user })
@@ -489,8 +483,7 @@ app.get('/trades/failed', verifyJWT, async (req, res) => {
 
     return res.status(200).json({ trades });
   } catch (error) {
-    console.error('Trade error:', error);
-    return res.status(500).json({ error: 'Trade failed' });
+    return res.status(500).json({ message: 'Trade failed' });
   }
 });
 
@@ -499,7 +492,7 @@ app.post('/forgot-password', async (req, res) => {
     const { email } = req.body;
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(404).send({ error: 'User not found' });
+      return res.status(404).send({ message: 'User not found' });
     }
     const resetToken = generateResetToken(); // Implement a function to generate a unique token
     user.resetToken = resetToken;
@@ -508,7 +501,7 @@ app.post('/forgot-password', async (req, res) => {
     res.send({ message: 'Password reset email sent' });
   } catch (error) {
     console.error(error);
-    res.status(500).send({ error: 'Failed to reset password' });
+    res.status(500).send({ message: 'Failed to reset password' });
   }
 });
 
@@ -517,7 +510,7 @@ app.post('/reset-password', async (req, res) => {
     const { email, token, newPassword } = req.body;
     const user = await User.findOne({ email, resetToken: token });
     if (!user) {
-      return res.status(404).send({ error: 'Invalid or expired token' });
+      return res.status(404).send({ message: 'Invalid or expired token' });
     }
     user.password = await bcrypt.hash(newPassword, 10);
     user.resetToken = null; // Invalidate the reset token
@@ -525,7 +518,7 @@ app.post('/reset-password', async (req, res) => {
     res.send({ message: 'Password reset successful' });
   } catch (error) {
     console.error(error);
-    res.status(500).send({ error: 'Failed to reset password' });
+    res.status(500).send({ message: 'Failed to reset password' });
   }
 })
 
@@ -535,7 +528,7 @@ app.get('/logout', async (req, res) => {
     res.send({ message: 'Logged out successfully' });
   } catch (error) {
     console.error(error);
-    res.status(500).send({ error: 'Logout failed' });
+    res.status(500).send({ message: 'Logout failed' });
   }
 });
 
